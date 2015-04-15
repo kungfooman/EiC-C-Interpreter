@@ -1,0 +1,41 @@
+showSRCS::
+	echo "NormalNodeTargets showSRCS"
+	@for i in $(DIRS); do \
+		(cd $$i ; \
+		$(MAKE) showSRCS) ;\
+	done
+
+all::
+	echo "NormalNodeTargets all"
+	@for i in $(DIRS); do \
+		(cd $$i ; \
+		$(MAKE) all) ;\
+	done
+
+clean::
+	echo "NormalNodeTargets clean"
+	@for i in $(DIRS); do \
+		(cd $$i ; \
+		$(MAKE) clean) ;\
+	done
+
+install::
+	echo "NormalNodeTargets install"
+	@for i in $(DIRS); do \
+		(cd $$i ; \
+		$(MAKE) install) ;\
+	done
+
+clobber::
+	echo "NormalNodeTargets clobber"
+	@for i in $(DIRS); do \
+		(cd $$i ; \
+		$(MAKE) clobber) ;\
+	done
+
+headers::
+	echo "NormalNodeTargets headers"
+	@for i in $(DIRS); do \
+		(cd $$i ; \
+		$(MAKE) headers) ;\
+	done

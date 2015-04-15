@@ -1,0 +1,263 @@
+.TH EiC 1 "15 April 2009"
+.SH NAME
+
+eim - EiC-Improved (EiC that can talk to simulation)
+
+
+.SH SYNOPSIS
+
+\fB eim [-Ipath] [-Dname[=var]] -[hHvVcCrR] [file] [fileargs] \fP
+
+.SS Options
+
+C preprocessor directives:
+   -Ipath      search for include files in path
+   -Dname      define a symbolic name to the value 1
+   -Dname=var  define a symbolic name to the value var
+                    Note, there is no spaces allowed
+EiC directives:
+   -h -H       causes this usage to be displayed
+   -v -V       print EiC's Log information
+   -p          showline
+   -P          show path of include files
+   -t -T       turns trace on (-T only traces funcs)
+   -c -C       turns timer on
+   -e          echo HTML mode
+   -r          restart EiC. Causes EiC to be re initiated
+                          from the contents of EiChist.lst file
+   -R          same as `r', but prompts the user to accept
+                           or reject each input line first
+   -s -S       run silently
+   -f          run in script mode
+   -n          no history file
+   -N          don't use any startup.h files
+   -A          Non-interactive-mode
+   file        EiC will execute `file' and then stop; for example:
+                       % eim foo.c 
+   fileargs    command line arguments, which get passed onto file
+.nf
+link2eic directives:
+   -Mport      specify the port number to be used (default: 17767)
+   -g -G       standalone test mode (-G loads 'volatile.dat')
+
+
+
+
+.SH BASICS
+
+To exit EiC enter `:exit', that is:
+
+  EiC >  :exit
+
+
+.SH DESCRITION
+
+The eim (EiC-Improved) is a C Interpreter like \fIeic\fR(1). However, it includes
+enhancements that allows the eim to talk to logic simulation so that
+C program can drive logic simulation. This man page won't describe EiC basic 
+features that are identical to those of the \fIeic\fR(1). Please refer to the 
+eic man page for other EiC C Interpreter features.
+
+.SH SIMULATION AGENT FOR EiC
+
+To use the eim (EiC-Improved) with logic simulation, an agent that bridges
+between the EiC and logic simulation is necessary in addition the EiC. 
+The agent uses the protocol (Open EiC request protocol) through three named 
+pipes to communicate with the EiC. By separating the agent from the EiC,
+the EiC can work in various types of simulation.
+The ModelLink/Link2EiC from Ponderosa Design supports the protocol and 
+it bridges the EiC and system buses in Verilog simulation, for example. 
+A new agent can be developed to use the EiC for different applications.
+The Open EiC request protocol is specified in a documentation included 
+in the EiC release package.
+
+.SH VOLATILE STORAGE CLASS
+
+The eim (EiC-Improved) now supports volatile qualifier and uses it to
+identify which variables are storages in logic simulation. If a variable 
+is declared with volatile qualifier, the EiC assumes the variable has
+volatile storage class and the pointer address of the variable is 
+used to access the storage in the target system in simulation.
+Variables with the volatile storage class must be accessed through pointer
+because the EiC doesn't have any idea how volatile storage variables
+are assigned in the target system's address space. The eim 
+generates warnings if a volatile storage variable is not being accessed 
+through a pointer.
+
+  EiC > volatile int x;
+         (void)
+  EiC > x = 100;
+  Warning: in ::EiC:: near line 2: Suspicious lval with volatile qualifier
+  	      100
+  EiC > x;
+  Warning: in ::EiC:: near line 3: Suspicious rval with volatile qualifier
+          100
+
+.SH STANDALONE TEST MODE
+
+The eim (EiC-Improved) works exactly like the eic. However, a valid 
+communication with simulation via an agent must be established before
+the eim becomes available to use. If the eim cannot establish the
+communication, it generates an error message and exits.
+
+  % eim
+  @E: Can't open the specified named pipes
+
+The standalone test mode allows users to try out his/her C program
+without having the target simulation. The eim with -g or -G command line
+option enables the standalone test mode.
+
+  % eim -g
+
+  EiC > volatile unsigned int *ip = (unsigned int *)0x00001000;
+  	(void)
+  EiC > *ip = 0x100;
+  WRITE: @0x00001000 (sz=4) <= 0x00000100
+  	4096
+  EiC > *ip;
+  READ: @0x00001000 (sz=4) => 0x00000000
+  	0
+
+The dereferencing of volatile storage class variable under the standalone 
+test mode always yields 0. However, it may be necessary to have a non-zero
+value returned for certain target addresses. An external data file, 'volatile.dat', can be used to load address - read data sets.
+The 'volatile.dat' needs to contain an associative array.
+
+Example:
+  volatile.dat:
+
+  volatile = {
+      0x00001000: 0x8877665544332211,
+  //  address: 64-bit data in hex
+      }
+
+  % eim -G
+  @N: valid 'volatile.dat' found
+  @N: 1 predefined address-data sets were read
+  
+  EiC > volatile unsigned int *ip = (unsigned int *)0x00001000;
+  	(void)
+  EiC > *ip;
+  READ: @0x00001000 (sz=4) => 0x44332211
+
+There is a template version of 'volatile.dat' under EiC/new_main directory,
+which includes self-checking code. You can verify the format by running
+it as a Python script.
+
+  % python volatile.dat
+  found 1 entries
+  Address range:
+  Low-end:   0x1000
+  High-end:  0x1007
+  Data entry seems legal
+
+.SH COMMUNICATION PORT
+
+The eim (EiC-Improved) uses a port number to create a unique communication
+between the eim and the agent. The default port number is 17767. However,
+the port number can be changed using the -M command line option so that
+multiple eim instances can coexist in the same CPU domain.
+
+  % eim -M17768
+
+The eim uses named pipes to communicate with the agent. The named pipes
+are created by the agents, not by the eim, in the /usr/tmp directory.
+
+The default named pipes are:
+  /usr/tmp/link2eic-17767-stdin
+  /usr/tmp/link2eic-17767-stdout
+  /usr/tmp/link2eic-17767-stderr
+
+The agents needs to remove the named pipes when it is shutting down.
+
+.SH INTERRUPT SUPPORT
+
+The eim (EiC-Improved) supports interrupt from simulation. A SIGUSR2 signal
+is raised when an interrupt event is propagated to the eim. The user needs
+to write his/her own SIGUSR2 signal handler to handle the interrupt.
+The interrupt events are picked up by the eim independent to the C program 
+it is executing. The EiC Virtual Machine (VM) is checking the stderr named
+pipe time to time to see if a new event has arrived. This process is not 
+done preemptively but id done cooperatively. If the VM stops, it won't
+detect an arrival of new event. For example, interrupts won't be processed
+when sleep(int secs) is being executed.
+To work around this problem, a proprietary library function 
+link2eic_iwait(int secs) is provided. It sleeps like sleep() but exits if 
+a new event arrives at the stderr command pipe.
+
+.SH RADIX EiC COMMAND
+
+The default display format of the EiC is radix 10. However, in some situations,
+radix 16 (hexadecimal format) may be more intuitive than radix 10. The radix
+EiC command is added to toggle two radixes. The radix 10 is chosen when the 
+eim starts.
+
+  EiC > unsigned long long ull = INT64_MIN;
+  	(void)
+  EiC > ull;
+  	9223372036854775808
+  EiC > :radix
+  	(void)
+  EiC > ull;
+  	0x8000000000000000
+  EiC > :show ull
+  ull -> unsigned long long 
+  value= 	0x8000000000000000
+  	(void)
+
+When radix 16 is selected, all variables are treated as unsigned. 
+
+  EiC > signed int si = -128;
+  	(void)
+  EiC > si;
+  	-128
+  EiC > :radix
+  	(void)
+  EiC > si;
+  	0xffffff80
+
+.SH TRACE GENERATION
+
+Various kinds of Trace information can be sent to the agent to help users to
+correlate C program and logic simulation. When the eim is invoked with 
+-t or -T command line option, the eim generates function call / return trace
+commands to the agent. The -t command line option generates both line trace
+information as well as function call / return information (line trace 
+information won't be forwarded  to the agent). Only function call / return 
+information is generated if -T command line option is given.
+
+  % eim -T test_imgop.c
+  @N: Pipes to link2eic are connected
+  
+  
+  [main] 
+  [rpclib] 
+  [rpc_wait] 
+  ret: 0
+  
+  [rpclib] ver: 1010002
+  
+  [rpc_wait] .............
+  ret: 0
+  
+  [rpclib] 
+
+  ... snip ... snip ... snip ...
+
+In addition to function call / return trace information, which is generated
+automatically when EiC trace mode is on, a trace message can be sent to
+the agent using a proprietary library function link2eic_tracelog(char *msg).
+
+  #include <link2eic/link2eic.h>
+  
+    link2eic_tracelog("The feature is initiated");
+
+It is up to the agent, how trace information from the eim is used.
+
+
+
+.SH SEE ALSO
+
+	\fIeic\fR(1)
+     Link2EiC.README  (included in the release)
+

@@ -1,0 +1,631 @@
+                                                          6/26/2009  Aki
+                                                          4/10/2009  Aki
+
+                          :: EiC-Improved ::
+
+This file contains the information regarding to the changes made to
+the original EiC V4.3.3 to support Co-simulation via ModelLink/link2eic.
+
+::IMPORTANT::
+This distribution of EiC creates two executables, 'eic' and 'eim'.
+The 'eim' is the enhanced EiC C Interpreter that is capable of communicating 
+with logic simulation. Another executable, the 'eic', is also generated from 
+the same source code tree but the ability to communicate to logic simulation 
+is disabled. This is done to meet the condition set in the LICENSE.
+
+    c) rename any non-standard executables so the names do not conflict
+    with standard executables, which must also be provided, and provide
+    a separate manual page for each non-standard executable that clearly
+    documents how it differs from the Standard Version.
+
+'eic' for Extensible Interactive C
+'eim' for EiC-Improved
+
+
+::Abstract::
+EiC (Extensible Interactive C) was developed by Edmond J. Breen and maintained
+by him until 2005 and now no longer appears active.
+His original EiC package is available for downloading from LinuxBox.
+
+http://www.linuxbox.com/tiki/node/149
+
+The following summarizes the original EiC:
+ * An open-source project
+ * Complete and well-designed C language Interpreter
+ * Designed to be a production tool
+ * Includes Interactive mode with various EiC commands
+ * Supports safe pointers
+ * Developed by Edmond J. Breen
+ * High-quality documentation
+ * Supports multiple platforms
+
+
+Now, this distribution was modified from the original EiC to support
+an ability to communicate with logic simulation.
+
+The following enhancements were made:
+ * 64-bit data type (long long, unsigned long long) supports
+ * volatile qualifier supports
+ * Communication via named pipes
+ * Asynchronous Interrupt support
+ * :radix EiC command to select display radix
+
+//
+
+As you see in the above list, there are no enhancements to C language 
+supports in this distribution. Therefore, this distribution is not for you 
+unless the ability to communicate with logic simulation is necessary.
+Besides, the new distribution would limit the supported platforms because of 
+the data type supports. Please use the original EiC if your goal is to
+have a good C Interpreter.
+
+To use the EiC with logic simulation, you need an "agent" between logic 
+simulation and EiC C Interpreter.
+The ModelLink from Ponderosa Design offers such agent, ModelLink/link2eic,
+for the AXI System Bus based systems. The communication protocol is documented 
+later in this file so that other "agents" can be developed.
+
+ModelLink:
+http://www.ponderosa-design.com/index.php?product=_modellink&view=EasyCosimStandard
+
+::Data Type::
+This distribution was enhanced to support the following data types:
+ * long long (64-bit signed)
+ * unsigned long long (64-bit unsigned)
+ * long (32-bit signed)
+ * unsigned long (32-bit unsigned)
+ * int (32-bit signed)
+ * unsigned int (32-bit unsigned)
+ * short (16-bit signed)
+ * unsigned short (16-bit unsigned)
+ * char (8-bit signed)
+ * unsigned char (8-bit unsigned)
+ * pointer types (32-bit)
+ * struct, union
+
+There are two key issues with the above arrangements:
+ * The Host machine must be _ILP32 Unix
+  - because the EiC uses its underlying OS, the data types must match
+    the host machine's data types. This means the host machine
+    must be _ILP32 Unix (means Integer, Long, and Pointer are 32-bit wide)
+    If the EiC is compiled for _LP64 Unix (means Long and Pointer are 64-bit 
+    wide), EiC won't work as intended and tests may fail. 
+
+ * ANSI C / ISO C90 doesn't support long long data types
+  - ISO C99 supports long long data types. However, make complains
+    in other codes if -std=c99 option is set to use ISO C99.
+    I kept -ansi gcc option and ignore all warnings for now.  
+
+When it comes to long long data type supports, the following changes were
+made as well:
+ * UINT64_MAX, INT64_MAX, and INT64_MIN are added
+  - ULONG_MAX, LONG_MAX, and LONG_MIN remain 32-bit
+ * LL suffix supported
+ * 'll' printf/scanf length modifier supported
+ * strtoll(), strtoull(), atoll(), and _lltoa() are added (stdlib.h)
+ * lldiv() is added (math.h)
+
+There is a small C program that verifies the data types implemented in the EiC
+you have compiled (EiC/new_main/examples/test-datatypes.c).
+
+  % eim -g test-datatypes.c
+  It pukes if the EiC was not compiled for _ILP32 Unix system
+  Testing char, short, int, long, long long, ptr data types ...
+  
+  Endianness: Big-endian
+
+::Supported Platforms::
+The original EiC supports various platforms. However, supported platforms are
+now limited to Solaris (32-bit) and Linux (32-bit). Other platforms may be 
+included when they are verified. 
+
+                     Original EiC          EiC-Improved
+LINUX/x86 (32-bit)      Yes                   Yes     (_ILP32)
+LINUX/x64 (64-bit)       ?                    Not yet (_LP64) 
+SOLARIS/SPARC (32-bit)  Yes                   Yes     (_ILP32)
+SOLARIS/SPARC (64-bit)   ?                    Not yet (_LP64)
+SOLARIS/x86 (32-bit)     ?                    Yes     (_ILP32)
+SOLARIS/x86 (64-bit)     ?                    Not yet (_LP64)
+NETBSD                 included
+OSF1                   included
+DJGPP                  included
+FREEBSD                included
+SUNOS                  included               Obsolete
+HPUX                   included
+IRIX                   included
+PPC                    included               Obsolete
+
+Non trival efforts are probably required to support _LP64 platforms because 
+some pointer types are no longer simple objects under _LP64 platforms.
+
+
+::volatile qualifier::
+The volatile qualifier was simply ignored with the original EiC.
+Now, the new EiC needed a way to determine which referencing/dereferencing 
+is destined for address space in logic simulation or symbol table allocated
+in the software.
+Because the address space in logic simulation can be any location in the
+given 4GB address space, the address value itself cannot be used to
+determine the location of the data storage.
+With the new EiC, variables with the following data types are assumed
+to reside in logic simulation.
+
+ * volatile long long
+ * volatile unsigned long long 
+ * volatile long 
+ * volatile unsigned long 
+ * volatile int 
+ * volatile unsigned int 
+ * volatile short 
+ * volatile unsigned short 
+ * volatile char 
+ * volatile unsigned char 
+
+Please note that volatile qualifier for the following data types doesn't
+do the trick:
+
+ * volatile (pointer types)
+ * volatile struct or volatile union
+
+Example:
+  #define PORT 0x800000000
+  volatile int *ip = (int *)PORT;    // pointer to volatile int
+  int * volatile ipp = (int *)PORT;  // volatile pointer to int
+
+Both above two pointers are legal but only ip (pointer to volatile int) is
+treated as an address in logic simulation,
+
+::Communication to logic simulation::
+When referencing/dereferencing of volatile variables is executed by the EiC 
+VM (Virtual Machine), address, data, and type are forwarded to the communication
+pipes to the outside agent.
+Three named pipes, "stdin", "stdout", and "stderr", are used.
+
+The pipes are created as following files:
+
+  /usr/tmp/link2eic-17767-stdin  (EiC -> "agent")
+  /usr/tmp/link2eic-17767-stdout ("agent" -> EiC)
+  /usr/tmp/link2eic-17767-stderr ("agent" -> EiC)
+
+The port number, 17767, may be changed to something different using -M option.
+
+   link2eic directives:
+	-Mport      specify the port number to be used (default: 17767)
+
+Example:
+  % eim -M17768
+
+This allows multiple EiCs can exist in a single host.
+
+The "stdin" pipe is used to send access request from the EiC.
+The "stdout" pipe is used to return access response from the agent.
+
+(1) 'init' command
+
+   "('init', mode, )\n" ---> "agent" ---> "('ack', dev_info, ...,)\n" 
+                                     ---> "('nack', reason,)\n"
+
+  'ack' is returned if the "agent" is ready (simulation is running)
+  'nack' is returned, otherwise 
+
+mode: (a decimal value)
+  0 - normal
+  otherwise - reserved
+
+dev_info: (in hexadecimal w/ "0x")
+  May be multiple words
+  1st word: (capability)
+   bit0 - 'init' command supported
+   bit1 - 'fini' command supported
+   bit2 - 'read' command supported
+   bit3 - 'write' command supported
+   bit4 - 'port' command supported
+   bit5 - 'trace' command supported
+   bit6 - 'cache' command supported
+   otherwise - reserved (set to a '0')
+  remaining words (optional)
+
+reason: (in hexadecimal w/ "0x")
+  bit0 - simulation is not ready
+  bit1 - unable to process requests
+  otherwise - reserved 
+
+(2) 'fini' command
+
+   "('fini', code)\n" ---> "agent"  ---> "('ack', resp,)\n"
+
+  shutdown the "agent". The logic simulation may be terminated subsequently
+  because the Co-sim communication is down. A 'fini' message is automatically
+  sent when an EiC C program is exiting (link2eic_fini(void) is registered
+  with atexit()). The 'ack' response may not be read from the EiC C program.
+
+code: a decimal value
+  0 - normal
+  otherwise - reserved
+
+resp: a decimal value
+  undefined (not used)
+
+(3) 'read' command
+
+   "('read', addr, size)\n" ---> "agent"  ---> "('rresp', resp, rdata,)\n"
+
+  addr is in hexadecimal (with "0x")
+  size is size in byte
+  resp is a decimal response code (whatever logic simulation returns)
+  rdata is in hexadecimal (with "0x")
+
+(4) 'write' command
+
+   "('write', addr, size, wdata)\n" ---> "agent"  --->" ('wresp', resp,)\n"
+
+  addr is in hexadecimal (with "0x")
+  size is size in byte
+  wdata is in hexadecimal (with "0x")
+  resp is a decimal response code (whatever logic simulation returns)
+
+(5) 'port' command
+
+The "stderr" pipe is used to send asynchronous event message from the agent.
+This is one-way "push" only communication.
+
+   "agent" ---> "('port', ivec,)\n" ---> EiC
+
+  ivec is a hexadecimal value. The EiC checks the "stderr" pipe stream time 
+  to time (between statement blocks). If a non-zero value is returned, 
+  the EiC raises SIGUSR2 signal. User handler (or EiC's default handler) can 
+  catch the signal.
+
+(6) 'trace' command
+
+   "('trace', 'trace_message',)\n" ---> "agent"  
+
+  feeds the trace message generated from the EiC to the agent. The EiC 
+  can generate trace information when the trace mode is on. It is up
+  to the agent how the information is used. The information can be further
+  forwarded to the logic simulation so that C program progress and 
+  logic simulation can be correlated.
+  Four types of message are defined. The EiC currently only generates
+  first two types (function call and function return) when the trace mode
+  is on. A proprietary library function, link2eic_tracelog(), can be used
+  to send a trace log message to the agent from a EiC C program. The 
+  link2eic_tracelog() is not a part of Std C library.
+
+trace_message: (a quoted string)
+  function call:
+    func: <func_name>
+  function return:
+    resume: <func_name> @ ddd
+  line number:
+    line: ddd
+  trace message:
+    log: <tracelog_message>
+      the tracelog_message can be a multiple line text by using "\\n".
+
+Example:
+
+    #include<link2eic/link2eic.h>
+
+    link2eic_tracelog("Initialization is completed.\\n"
+                      "Testing the Image processing pipe");
+
+
+(7) 'cache' command
+
+   "('cache', level,)\n" ---> "agent"  
+
+  controls the cache behavior. Having a cache in the "agent" is optional.
+  The cache may need fine controls, such as Cache address ranges. Those 
+  controls must be sent to the "agent" by other means.
+
+level: (a decimal value)
+  0 - Cache disabled (flush the cache)
+  1 - Cache enabled
+  otherwise - reserved
+
+
+::Interrupt support::
+The EiC can be interrupted by sending a message to the "stderr" pipe with 
+non-zero ivec value from the "agent".
+The new EiC inserts a new EiC VM instruction "bgjob" between statement blocks.
+When the VM executes the "bgjob" instruction, it checks the "stderr" pipe to 
+see if any new message has arrived. If the message is there and the message 
+is a 'port' command, the ivec value is extracted from the message.
+SIGUSR2 signal is raised if the ivec value is non zero.
+If the value of the ivec is necessary in handling the interrupt, the interrupt
+handler must obtain the ivec value from another means.
+
+
+IMPORTANT:
+  EiC won't raise SIGUSR2 signal unless it checks the "stderr" pipe.
+  If user's C program executes sleep() (unistd.h), the EiC won't check the pipe
+  while in sleep(), thus it won't respond to the interrupt.
+
+  To work around this potential problem, link2eic_iwait() function is added.
+  It is not a part of Std C library.
+
+Example:
+
+    #include<unistd.h>
+
+    sleep(100);  // won't respond while in sleep() for 100 seconds
+
+    #include<link2eic/link2eic.h>
+
+    link2eic_iwait(100);  // sleep up to 100 seconds but exits 
+                          // if a message arrives at "stderr" pipe
+ 
+/*  
+    int link2eic_iwait(secs)
+
+    blocking until a message is arrived to stderr pipe stream
+    if secs is a negative, it will wait indefinitely (no timeout)
+*/
+
+::Standalone test mode::
+
+New command line options, -g and -G, are introduced.
+Both options put EiC into Standalone test mode, in which EiC can be used without 
+valid communication to logic simulation.
+The EiC with -g option behaves much like conventional EiC, the version Edmond 
+J. Breen developed and maintained. Referencing (WRITE) to volatile variables 
+under the Standalone test mode generates messages like the following:
+
+    EiC 1> volatile unsigned long long *pullval = (unsigned long long *)0x80000000;
+    	(void)
+    EiC 2> *pullval = INT64_MAX;
+    WRITE: @0x80000000 (sz=8) <= 0x7fffffffffffffff
+    	9223372039002259456
+
+Similarly, De-referencing (READ) of volatile variables under the Standalone 
+test mode produce messages like the following:
+
+    EiC 1> volatile unsigned long long *pullval = (unsigned long long *)0x80000000;
+    	(void)
+    EiC 2> *pullval;
+    READ: @0x80000000 (sz=8) => 0x0000000000000000
+    	0
+
+A zero value is always returned if the EiC is started with -g option. However, 
+non-zero return value for some address entries may be preferred to run a 
+program through.  If the EiC is started with -G option, the EiC first searches 
+'volatile.dat' file in the current directory. If the file is found, the 
+address-data sets are taken into the EiC and De-referencing returns the 
+pre-defined data if the address is found in the sets.
+
+The address-data is specified as follows:
+volatile = {
+  address : data,
+  address : data,
+...
+  address : data,
+  }
+address is:
+  64-bit boundary aligned 32-bit address  (multiple of 8B)
+  "0x" must be placed if hexadecimal 
+
+data is:
+  64-bit data (little-endian)
+  "0x" must be placed if hexadecimal 
+
+If an access from EiC is not a 64-bit access but an access with smaller size, 
+data is extracted from a 64-bit data (little-endian).
+
+Example:
+  0x80000000: 0x0123456789abcdef,
+
+*(uchar_t *)0x80000000 => 0xef
+*(uint_t *)0x80000004 => 0x01234567
+
+A template 'volatile.dat' is in the EiC/new_main directory.
+The 'volatile.dat' is also a Python script and the data file can be validated by
+running it.
+
+Example:
+  % python volatile.dat
+  found 4 entries
+  Address range:
+  Low-end:   0x80000000L
+  High-end:  0x8000001fL
+  Data entries seem legal
+
+
+:: :radix EiC command::
+
+The default radix of the EiC is base 10 (signed if the data type is signed).
+However, base 10 (decimal) may not be convenient when you are dealing with
+larger values. For example, 0x80000000 may be easier to figure out which bit
+is on rather than looking at 2147483648.
+
+A new EiC command, ':radix', is added to toggle the radix (base 10 / base 16).
+The default radix remains base 10 such that executing :radix command once
+sets the radix to base 16. The current setting can be verified by executing 
+the :status EiC command.
+
+Example:
+
+    EiC 5> int d = 0x80000000;
+    	(void)
+    EiC 6> d;
+    	0x80000000
+    EiC 7> :show d
+    d -> int 
+    value= 	0x80000000
+    	(void)
+    EiC 8>  
+
+::Deferred link2eic initialization option::
+
+The EiC can defer the link2eic initialization so that C program can be used 
+to set up the simulation that is to be used with the C program.
+When -x / -X option is given to the EiC (eim), it opens the three named pipes
+(stdin, stdout, stderr) but it won't send the 'init' command to initialize
+the link. The deferred (skipped) initialization sequence must be executed 
+in the user's C program by calling the link2eic_init_cosim(int nretries) after
+simulation is started.
+
+The -X option and -x option are identical except that -X option enables 
+"persistent" mode. When the -X option is given, the EiC (eim) tries to open 
+the named pipes up to 5 seconds (it tries every 0.5 seconds). Otherwise, it 
+terminates the program right away if it cannot open the named pipes. 
+The -X option may be useful to run the EiC (eim) with script.
+(The ModelLink/link2eic offers 'runeic' script to run simulation with 
+the EiC and C program)
+
+::HINTS::
+
+(1) In case you want use the new EiC without logic simulation
+
+  - use -g option (debug option)
+
+   % eim -g   // won't puke even no "agent" is running
+
+
+
+::EiC shortcomings::
+
+Although EiC is fairy complete C Interpreter, I notice several shortcomings:
+(1) long double is not 128-bit
+ long double is treated as regular double (64-bit)
+(2) No support for wide character
+ The EiC uses 8-bit character set. It is probably quite a pain to support
+ wide characters (unicode). The last character in the character set (0xFF)
+ is also used as an EOF (-1).
+(3) char * is always assumed to point to a valid null-terminated string
+
+    EiC 1> char *cp = (char *)0x00001000;
+    	(void)
+    EiC 2> :show cp
+    cp -> * char 
+    value= Error in ::EiC:: near line 4: 
+    EiC illegal storage access, file ::EiC::, line 3
+    
+    Error: clean up forced
+
+It is trying to display the null-terminated string rather than showing the
+pointer value. This is not the case with other pointers.
+
+    EiC 7> unsigned char *ucp = (unsigned char *)0x00001000;
+    	(void)
+    EiC 8> :show ucp
+    ucp -> * unsigned char 
+    value= 	1000
+    	(void)
+
+But this is hardly a bug.
+
+
+/***** details (probably you don't need the following *****/
+
+Files modified from the original EiC
+EiC/Makefile                         - new_main rather than main
+EiC/config/genstdio.c                - INT64_MAX, UINT64_MAX, INT64_MIN added
+EiC/src/MachSet.h                    - many new VM instructions
+EiC/src/Makefile                     - new_main rather than main
+EiC/src/lexer.c                      - LLseen
+EiC/src/starteic.c                   - default handler for SIGUSR2
+EiC/src/parser.c                     - generates 'bgjob' VM instruction
+EiC/src/typemod.c                    - cases for t_ullong
+EiC/src/typemod.h                    - macros for volatile qualifier
+EiC/src/error.c                      - #include <strings.h> added
+EiC/src/readline.c                   - annoying parenthesis mathing is disabled
+EiC/src/interpre.c                   - supports new VM instructions
+EiC/src/cdecl.c                      - t_ullong if unsigned; volatile flag is set
+EiC/src/eicmod.c                     - radix support; message changes
+EiC/src/typesets.c                   - t_llong, t_ullong support; volatile lval, rval
+EiC/src/lexer.h                      - LLONG, ULLONG tokens
+EiC/src/emitter.c                    - supports new VM instructions
+EiC/src/eicval.h                     - ullval is now added to Val_t
+EiC/src/global.h                     - t_ullong, q_volatile
+EiC/module/stdClib/src/itoa.c        - lltoa(), ulltoa()
+EiC/module/stdClib/src/stdio.c       - 'll' printf/scanf length modifier
+EiC/module/stdClib/src/stdliblocal.h - ulltoa(), lltoa() declared
+EiC/module/stdClib/src/math.c        - eic_lldiv()
+EiC/module/stdClib/src/stdlib.c      - strtoll(), strtoull(), lltoa(), atoll()
+EiC/module/stdClib/src/stdlib.h      - declared new functions
+EiC/module/stdClib/src/stdClib2eic.h - declared new functions
+
+files under EiC/test are also modified
+
+Files newly added
+EiC/Link2EiC.README                  - this file
+EiC/eim.man                          - man page for eim 
+EiC/module/link2eic/Makefile         - Makefile for link2eic module
+EiC/module/link2eic/link2eic.c       - link2eic_iwait()
+EiC/module/link2eic/link2eic.h       - user header
+EiC/new_main/main.c                  - main() that opens the communication
+EiC/new_main/Makefile                - Makefile for new main
+EiC/new_main/link2eic.h              - header file for link2eic extension
+EiC/new_main/link2eic.c              - link2eic extension
+EiC/new_main/volatile.dat            - 'volatile.dat' template (with validate script)
+EiC/new_main/examples/test-datatypes.c - A simple C program to verify if the EiC is for _ILP32
+
+New VM instructions
+(looks many but 'bgjob' is the only one which is completely new)
+
+
+(instructions regarding to ullong)
+addullong
+andullong
+borullong
+landullong
+leullong
+lorullong
+lshtullong
+ltullong
+xorullong
+modullong
+multullong
+negullong
+neullong
+notullong
+pushullong
+rshtullong
+rvalullong
+stoullong
+subullong
+compullong
+decullong
+divullong
+equllong
+geullong
+gtullong
+incullong
+drefullong
+refullong
+
+(Cast instructions)
+double2ullong
+int2ullong
+long2ullong
+uint2ullong
+ullong2char
+ullong2double
+ullong2int
+ullong2long
+ullong2ptr
+ulong2ullong
+
+(ref/deref instructions of volatile variables)
+drefvolchar
+drefvolint
+drefvolllong
+drefvollong
+drefvolshort
+drefvoluchar
+drefvoluint
+drefvolullong
+drefvolulong
+drefvolushort
+refvolchar
+refvolint
+refvolllong
+refvollong
+refvolshort
+refvoluint
+refvolullong
+refvolulong
+
+(back ground job cue)
+bgjob
+

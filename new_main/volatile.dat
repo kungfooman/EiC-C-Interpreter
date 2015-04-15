@@ -1,0 +1,85 @@
+#!/usr/bin/env python
+
+#
+#	$Id$
+#
+#	by neko
+#
+#	Description:
+#		data file to pre-define the volatile data to be returned
+#		python volatile.dat validates the data format
+#
+#	History:
+#		04/05/2009: created and tested
+#
+
+import sys, os
+import re
+
+###
+###		Pre-defined volatile data
+###
+
+s_volatile = """
+volatile = {
+	0x80000000: 0xdeadbeefdeadbeef,
+	0x80000008: 0xdbeefdeadbeefdea,
+	0x80000010: 0xefdeadbeefdeadbe,
+	0x80000018: 0xeadbeefdeadbeefd,
+#	0x8000001c: 0xeadbeefdeadbeefd,
+#	0x80000000: 0xdeadbeefdeadbeef,
+	}
+"""
+
+###
+###		Main routine
+###
+
+def main():
+	# check syntax error
+	exec(s_volatile)
+
+	# make sure something is in
+	assert len(volatile) > 0, 'No entry found'
+
+	# check entries (excluding commented lines)
+	m = re.findall("^\s+(0x?[0-9a-fA-F]+)\s*:\s*(0x?[0-9a-fA-F]+)", s_volatile, re.M)
+
+	# should not have any over-lapping entries
+	if len(m) == len(volatile):
+		print 'found %d entries' % len(m)
+	else:
+		print 'found %d entries; found %d non-overlapping entries' % (len(m), len(volatile))
+		raise AssertionError, 'Found overlapping entries' 
+
+	# checking values
+	addrs = volatile.keys()
+	datas = volatile.values()
+
+	addrs.sort()
+	print 'Address range:'
+	print 'Low-end:  ', hex(addrs[0])
+	print 'High-end: ', hex(addrs[-1]+(8-1))
+
+	assert addrs[0] >= 0 and addrs[-1] < (1 << 32), 'Address value error'
+
+	# address must be on 64-bit boundaries
+	for addr in addrs:
+		if (addr & 0b0111) == 0:
+			continue
+		msg =  '\'0x%08x\' is not on a 64-bit boundary' % addr  
+		raise AssertionError, msg
+
+	datas.sort()
+	assert datas[0] >= -(1 << 63) and datas[-1] < (1 << 64), 'Data value error'
+
+	#
+	print ['Data entries seem legal', 'Data entry seems legal'][len(m)==1]
+
+
+if __name__ == '__main__':
+	try:
+		main()
+	except AssertionError, msg:
+		print 'Found problem(s) in the data file' 
+		print '@E:', msg
